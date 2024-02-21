@@ -3,6 +3,8 @@ from openai import OpenAI
 from PIL import Image
 import base64
 import io
+import os
+from fc_chatbot import Chatbot
 def resize_image_in_memory(input_data, size=(512, 512)):
     # Create an in-memory stream for the input data
     input_stream = io.BytesIO(input_data)
@@ -39,73 +41,25 @@ def LoadAndProcessImage(input_image_path):
 
 apiKey = "<your api key>"
 client = OpenAI(api_key=apiKey)
-functions = "\"loadimage\" it takes in the input \"path\""
-sysprompt = "You are a helpful assistant.you have the functionss "+functions+". If you use a function use a function begin the message with \"function:\" and then a Jain string formatted like this : {\"name\":\"<function name>\",\"args\":[<the arguments the function uses>]} the user's response to your function request is the return value if the function. strictly follow the provided json format. Never correct the response of the function"
 
-chatlog = [
-    {
-        "role": "system",
-        "content": [
-            {
-                "type": "text",
-                "text": sysprompt,
-            },
-        ]
-    }
-]
 def loadimage(path):
     return "data:image/jpeg;base64,"+LoadAndProcessImage(path)
-def runFunction(functionCall):
-    print(functionCall)
-    functions = {"loadimage":{"function":loadimage,"type":"image"}}
-    functionName = functionCall["name"]
-    call = functions[functionName]
-    output = call["function"](*(functionCall["args"]))
-    if call["type"] == "text":
-        return {
-                "type": "text",
-                "text": str(output),
-            }
-    else:
-        return {
-                "type": "image_url",
-                "image_url": {
-                    "url":output
-                }
-            }
-def Generate(input):
-    chatlog.append({
-        "role": "user",
-        "content": [
-            input
-        ]
-    })
-    response = client.chat.completions.create(
-    model="gpt-4-vision-preview",
-    messages=chatlog,
-    max_tokens=300,
-    )
-    text:str = response.choices[0].message.content
-    chatlog.append({
-        "role": "assistant",
-        "content": [
-            {
-                "type": "text",
-                "text": text,
-            },
-        ]
-    })
-    if text.startswith("function:"):
-        data = text.split("function:")[1]
-        data = json.loads(data)
-        result = runFunction(data)
-        return Generate(result)
-    return text
+def listfiles():
+    folder_path = "./"
+    jpeg_files = [f for f in os.listdir(folder_path) if f.lower().endswith(".jpg")]
+    output = ""
+    for file in jpeg_files:
+        output += f"{file},"
+    jpeg_files = [f for f in os.listdir(folder_path) if f.lower().endswith(".jpeg")]
+    for file in jpeg_files:
+        output += f"{file},"
+    return output
+sysprompt = "You are a helpful assistant."
+chat = Chatbot(sysprompt)
+chat.addFunction(loadimage,"loadimage","image",["path"])
+chat.addFunction(listfiles,"list all jpg files","text",[])
+chat.init()
 while True:
     prompt = input("user: ")
-    data = {
-        "type": "text",
-        "text": prompt,
-    }
-    output = Generate(data)
+    output = chat.chat(prompt,client)
     print(f"AI: {output}")
